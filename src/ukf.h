@@ -47,6 +47,8 @@ public:
   ///* Laser measurement noise standard deviation position2 in m
   double std_laspy_;
 
+  MatrixXd R_laser_;
+
   ///* Radar measurement noise standard deviation radius in m
   double std_radr_;
 
