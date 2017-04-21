@@ -22,7 +22,7 @@ UKF::UKF() {
   n_x_ = 5;
 
   // Augmented state dimension
-  n_aug_ = 7; //TODO: is this the same for radar and lidar?
+  n_aug_ = 7;
 
   // initial state vector
   x_ = VectorXd(n_x_);
@@ -31,19 +31,19 @@ UKF::UKF() {
   // initial covariance matrix
   P_ = MatrixXd(n_x_, n_x_);
   P_ <<
-    0.8, 0, 0, 0, 0,
-    0, 0.8, 0, 0, 0,
-    0, 0, 0.1, 0, 0,
-    0, 0, 0, 0.1, 0,
-    0, 0, 0, 0, 0.1;
+    1, 0, 0, 0, 0,
+    0, 1, 0, 0, 0,
+    0, 0, 1000, 0, 0,
+    0, 0, 0, 1000, 0,
+    0, 0, 0, 0, 1000;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 1.5;
+  std_a_ = 1.7;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
   std_yawdd_ = 0.25;
 
-  YAW_ACCEL_MAX_ = 5.0;
+  YAW_ACCEL_MAX_ = 0.8;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -89,11 +89,9 @@ UKF::UKF() {
   }
 
   // the current NIS for radar
-  //TODO
   NIS_radar_ = 0.0;
 
   // the current NIS for laser
-  //TODO
   NIS_laser_ = 0.0;
 }
 
@@ -114,6 +112,8 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
    ****************************************************************************/
   if ( !is_initialized_ ) {
     // First measurement
+    cout << "UKF: " << endl;
+
     if ( meas_package.sensor_type_ == MeasurementPackage::RADAR ) {
       //Convert radar from polar to cartesian coordinates and initialize state.
       float rho = meas_package.raw_measurements_[0];
@@ -121,6 +121,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       float rho_dot = meas_package.raw_measurements_[2];
       float px = rho * cos(phi);
       float py = rho * sin(phi);
+      // can you guess small values for v, phi and phi_dot?
       x_ << px, py, 0, 0, 0;
     } else if ( meas_package.sensor_type_ == MeasurementPackage::LASER ) {
       //Initialize state.
@@ -150,24 +151,16 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   float delta_t = (meas_package.timestamp_ - time_us_) / 1000000.0;
   time_us_ = meas_package.timestamp_;
 
-  /*
-  while (delta_t > 0.1)
-    {
-      const double dt = 0.05;
-      Prediction(dt);
-      delta_t -= dt;
-    }
-  */
   Prediction(delta_t);
 
   // normalize angle
-  x_(3) = tools_.NormalizeAngle(x_(3));
+  //x_(3) = tools_.NormalizeAngle(x_(3));
   // limit angle acceleration
-  if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
-  if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
+  //if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
+  //if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
   // limit max speed
-  //if (x_(2)> 0)  x_(2) = min(x_(2), 20.0 * delta_t);
-  //if (x_(2)< 0)  x_(2) = max(x_(2), -20.0 * delta_t);
+  //if (x_(2)> 0)  x_(2) = min(x_(2), 6.0);
+  //if (x_(2)< 0)  x_(2) = max(x_(2), -6.0);
 
   /*****************************************************************************
    *  Update
@@ -181,17 +174,17 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   }
 
   // normalize angle
-  x_(3) = tools_.NormalizeAngle(x_(3));
+  //x_(3) = tools_.NormalizeAngle(x_(3));
   // limit angle acceleration
-  if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
-  if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
+  //if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
+  //if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
   // limit max speed
-  //if (x_(2)> 0)  x_(2) = min(x_(2), 20.0 * delta_t);
-  //if (x_(2)< 0)  x_(2) = max(x_(2), -20.0 * delta_t);
+  //if (x_(2)> 0)  x_(2) = min(x_(2), 6.0);
+  //if (x_(2)< 0)  x_(2) = max(x_(2), -6.0);
 
   // Print the output
-  std::cout << "x_ = " << x_ << std::endl;
-  std::cout << "P_ = " << P_ << std::endl;
+  cout << "x_ = " << x_ << endl;
+  cout << "P_ = " << P_ << endl;
 }
 
 /**
@@ -274,9 +267,7 @@ void UKF::Prediction(double delta_t) {
     v_p = v_p + nu_a * delta_t;
 
     yaw_p = yaw_p + 0.5 * nu_yawdd * delta_t * delta_t;
-    while (yaw_p> M_PI) yaw_p -= 2. * M_PI;
-    while (yaw_p<-M_PI) yaw_p += 2. * M_PI;
-
+    yaw_p = tools_.NormalizeAngle(yaw_p);
     yawd_p = yawd_p + nu_yawdd * delta_t;
 
     //write predicted sigma point into right column
@@ -363,8 +354,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     double v  = Xsig_pred_(2,i);
     double yaw = Xsig_pred_(3,i);
 
-    double v1 = cos(yaw)*v;
-    double v2 = sin(yaw)*v;
+    double v1 = cos(yaw) * v;
+    double v2 = sin(yaw) * v;
 
     // measurement model
     Zsig(0,i) = sqrt(p_x*p_x + p_y*p_y);                        //r
@@ -422,23 +413,23 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
   }
 
-  //Kalman gain K;
   // Check if S is invertable, if not, don't update
   Eigen::FullPivLU<MatrixXd> lu(S);
   if (!lu.isInvertible()) {
     return void();
   }
   MatrixXd Si = S.inverse();
+  // Kalman gain K;
   MatrixXd K = Tc * Si;
 
-  //residual
+  // Residual
   VectorXd z = meas_package.raw_measurements_;
   VectorXd z_diff = z - z_pred;
 
-  //angle normalization
+  // Angle normalization
   z_diff(1) = tools_.NormalizeAngle(z_diff(1));
 
-  //update state mean and covariance matrix
+  // Update state mean and covariance matrix
   x_ = x_ + K * z_diff;
   P_ = P_ - K*S*K.transpose();
 
