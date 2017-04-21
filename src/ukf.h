@@ -76,6 +76,8 @@ public:
   ///* the current NIS for laser
   double NIS_laser_;
 
+  double YAW_ACCEL_MAX_;
+
   /**
    * Constructor
    */
@@ -110,6 +112,8 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+  Tools tools_;
 };
 
 #endif /* UKF_H */
