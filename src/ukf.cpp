@@ -41,7 +41,9 @@ UKF::UKF() {
   std_a_ = 1.5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 0.5;
+  std_yawdd_ = 0.25;
+
+  YAW_ACCEL_MAX_ = 5.0;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -159,11 +161,10 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   Prediction(delta_t);
 
   // normalize angle
-  while (x_(3)> M_PI) x_(3) -= 2. * M_PI;
-  while (x_(3)<-M_PI) x_(3) += 2. * M_PI;
+  x_(3) = tools_.NormalizeAngle(x_(3));
   // limit angle acceleration
-  //if (x_(4)> 0) x_(4) = min(x_(4), 5.0);
-  //if (x_(4)< 0) x_(4) = max(x_(4), -5.0);
+  if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
+  if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
   // limit max speed
   //if (x_(2)> 0)  x_(2) = min(x_(2), 20.0 * delta_t);
   //if (x_(2)< 0)  x_(2) = max(x_(2), -20.0 * delta_t);
@@ -180,11 +181,10 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   }
 
   // normalize angle
-  while (x_(3)> M_PI) x_(3) -= 2. * M_PI;
-  while (x_(3)<-M_PI) x_(3) += 2. * M_PI;
+  x_(3) = tools_.NormalizeAngle(x_(3));
   // limit angle acceleration
-  //if (x_(4)> 0) x_(4) = min(x_(4), 5.0);
-  //if (x_(4)< 0) x_(4) = max(x_(4), -5.0);
+  if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
+  if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
   // limit max speed
   //if (x_(2)> 0)  x_(2) = min(x_(2), 20.0 * delta_t);
   //if (x_(2)< 0)  x_(2) = max(x_(2), -20.0 * delta_t);
@@ -302,8 +302,10 @@ void UKF::Prediction(double delta_t) {
     // state difference
     VectorXd x_diff = Xsig_pred_.col(i) - x;
     //angle normalization
-    while (x_diff(3)> M_PI) x_diff(3) -= 2. * M_PI;
-    while (x_diff(3)<-M_PI) x_diff(3) += 2. * M_PI;
+    x_diff(3) = tools_.NormalizeAngle(x_diff(3));
+    // limit angle acceleration
+    if (x_diff(4)> 0) x_diff(4) = min(x_diff(4), YAW_ACCEL_MAX_);
+    if (x_diff(4)< 0) x_diff(4) = max(x_diff(4), -YAW_ACCEL_MAX_);
 
     P = P + weights_(i) * x_diff * x_diff.transpose() ;
   }
@@ -317,9 +319,6 @@ void UKF::Prediction(double delta_t) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
-  /**
-  You'll also need to calculate the lidar NIS.
-  */
   VectorXd z = meas_package.raw_measurements_;
   MatrixXd H_ = MatrixXd(2, n_x_);
   H_ << 1, 0, 0, 0, 0,
@@ -341,14 +340,9 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   x_ = x_ + (K * y);
   long x_size = x_.size();
   MatrixXd I = MatrixXd::Identity(x_size, x_size);
-  //cout << P_.col(4) << endl;
-  // cout << endl;
-  //cout <<  K * H_ << endl;
   P_ = (I - K * H_) * P_;
-  //cout << endl;
-  //cout << P_.col(4) << endl;
-  //TODO NIS_lidar_;
 
+  NIS_laser_ = y.transpose() * Si * y;
 }
 
 /**
@@ -356,15 +350,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
-  /**
-  TODO:
-
-  Complete this function! Use radar data to update the belief about the object's
-  position. Modify the state vector, x_, and covariance, P_.
-
-  You'll also need to calculate the radar NIS.
-  */
-
   //create matrix for sigma points in measurement space
   int n_z = 3;
   MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
@@ -402,9 +387,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     VectorXd z_diff = Zsig.col(i) - z_pred;
 
     //angle normalization
-    while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-    while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
-
+    z_diff(1) = tools_.NormalizeAngle(z_diff(1));
+ 
     S = S + weights_(i) * z_diff * z_diff.transpose();
   }
 
@@ -425,33 +409,41 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     //residual
     VectorXd z_diff = Zsig.col(i) - z_pred;
     //angle normalization
-    while (z_diff(1)> M_PI) z_diff(1) -= 2.*M_PI;
-    while (z_diff(1)<-M_PI) z_diff(1) += 2.*M_PI;
+    z_diff(1) = tools_.NormalizeAngle(z_diff(1));
 
     // state difference
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
     //angle normalization
-    while (x_diff(3)> M_PI) x_diff(3) -= 2.*M_PI;
-    while (x_diff(3)<-M_PI) x_diff(3) += 2.*M_PI;
+    x_diff(3) = tools_.NormalizeAngle(x_diff(3));
+    // limit angle acceleration
+    if (x_diff(4)> 0) x_diff(4) = min(x_diff(4), YAW_ACCEL_MAX_);
+    if (x_diff(4)< 0) x_diff(4) = max(x_diff(4), -YAW_ACCEL_MAX_);
 
     Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
   }
 
   //Kalman gain K;
-  MatrixXd K = Tc * S.inverse();
+  // Check if S is invertable, if not, don't update
+  Eigen::FullPivLU<MatrixXd> lu(S);
+  if (!lu.isInvertible()) {
+    return void();
+  }
+  MatrixXd Si = S.inverse();
+  MatrixXd K = Tc * Si;
 
   //residual
   VectorXd z = meas_package.raw_measurements_;
   VectorXd z_diff = z - z_pred;
 
   //angle normalization
-  while (z_diff(1)> M_PI) z_diff(1) -= 2.*M_PI;
-  while (z_diff(1)<-M_PI) z_diff(1) += 2.*M_PI;
+  z_diff(1) = tools_.NormalizeAngle(z_diff(1));
 
   //update state mean and covariance matrix
   x_ = x_ + K * z_diff;
   P_ = P_ - K*S*K.transpose();
 
-  //TODO NIS_radar_;
-
+  NIS_radar_ = z_diff.transpose() * Si * z_diff;
 }
+
+
+
