@@ -38,10 +38,10 @@ UKF::UKF() {
     0, 0, 0, 0, 1000;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 1.7;
+  std_a_ = 1.6;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 0.25;
+  std_yawdd_ = 0.23;
 
   YAW_ACCEL_MAX_ = 0.8;
 
@@ -153,15 +153,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
   Prediction(delta_t);
 
-  // normalize angle
-  //x_(3) = tools_.NormalizeAngle(x_(3));
-  // limit angle acceleration
-  //if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
-  //if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
-  // limit max speed
-  //if (x_(2)> 0)  x_(2) = min(x_(2), 6.0);
-  //if (x_(2)< 0)  x_(2) = max(x_(2), -6.0);
-
   /*****************************************************************************
    *  Update
    ****************************************************************************/
@@ -172,15 +163,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     // Laser updates
     UpdateLidar(meas_package);
   }
-
-  // normalize angle
-  //x_(3) = tools_.NormalizeAngle(x_(3));
-  // limit angle acceleration
-  //if (x_(4)> 0) x_(4) = min(x_(4), YAW_ACCEL_MAX_);
-  //if (x_(4)< 0) x_(4) = max(x_(4), -YAW_ACCEL_MAX_);
-  // limit max speed
-  //if (x_(2)> 0)  x_(2) = min(x_(2), 6.0);
-  //if (x_(2)< 0)  x_(2) = max(x_(2), -6.0);
 
   // Print the output
   cout << "x_ = " << x_ << endl;
@@ -193,11 +175,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
  * measurement and this one.
  */
 void UKF::Prediction(double delta_t) {
-  /**
-  Complete this function! Estimate the object's location. Modify the state
-  vector, x_. Predict sigma points, the state, and the state covariance matrix.
-  */
-
   //create augmented mean vector
   VectorXd x_aug = VectorXd(n_aug_);
 
@@ -210,8 +187,8 @@ void UKF::Prediction(double delta_t) {
 
   //create augmented mean state
   x_aug.head(5) = x_;
-  x_aug(5) = 0;
-  x_aug(6) = 0;
+  x_aug(5) = 0.0;
+  x_aug(6) = 0.0;
 
   //create augmented covariance matrix
   P_aug.fill(0.0);
@@ -224,7 +201,7 @@ void UKF::Prediction(double delta_t) {
 
   //create augmented sigma points
   Xsig_aug.col(0)  = x_aug;
-  for (int i = 0; i< n_aug_; i++) {
+  for (int i = 0; i < n_aug_; i++) {
       Xsig_aug.col(i+1)       = x_aug + sqrt(lambda_ + n_aug_) * L.col(i);
       Xsig_aug.col(i+1+n_aug_) = x_aug - sqrt(lambda_ + n_aug_) * L.col(i);
   }
@@ -295,8 +272,12 @@ void UKF::Prediction(double delta_t) {
     //angle normalization
     x_diff(3) = tools_.NormalizeAngle(x_diff(3));
     // limit angle acceleration
-    if (x_diff(4)> 0) x_diff(4) = min(x_diff(4), YAW_ACCEL_MAX_);
-    if (x_diff(4)< 0) x_diff(4) = max(x_diff(4), -YAW_ACCEL_MAX_);
+    // HACK: If I don't do this the lower right corner of the P_ matrix
+    // gets very large and the process eventually stops.
+    // I assume setting the limits below could be hiding a
+    // coding mistake elsewhere
+    if (x_diff(4) > 0) x_diff(4) = min(x_diff(4), YAW_ACCEL_MAX_);
+    if (x_diff(4) < 0) x_diff(4) = max(x_diff(4), -YAW_ACCEL_MAX_);
 
     P = P + weights_(i) * x_diff * x_diff.transpose() ;
   }
@@ -345,10 +326,10 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   int n_z = 3;
   MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
   Zsig.fill(0.0);
-  //transform sigma points into measurement space
+  // Transform sigma points into measurement space
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
 
-    // extract values for better readibility
+    // Extract values for better readibility
     double p_x = Xsig_pred_(0,i);
     double p_y = Xsig_pred_(1,i);
     double v  = Xsig_pred_(2,i);
@@ -357,33 +338,33 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     double v1 = cos(yaw) * v;
     double v2 = sin(yaw) * v;
 
-    // measurement model
+    // Measurement model
     Zsig(0,i) = sqrt(p_x*p_x + p_y*p_y);                        //r
     Zsig(1,i) = atan2(p_y,p_x);                                 //phi
     Zsig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y);   //r_dot
   }
 
-  //mean predicted measurement
+  // Mean predicted measurement
   VectorXd z_pred = VectorXd(n_z);
   z_pred.fill(0.0);
   for (int i=0; i < 2 * n_aug_ + 1; i++) {
     z_pred = z_pred + weights_(i) * Zsig.col(i);
   }
 
-  //measurement covariance matrix S
+  // Measurement covariance matrix S
   MatrixXd S = MatrixXd(n_z,n_z);
   S.fill(0.0);
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
-    //residual
+    // Residual
     VectorXd z_diff = Zsig.col(i) - z_pred;
 
-    //angle normalization
+    // Angle normalization
     z_diff(1) = tools_.NormalizeAngle(z_diff(1));
  
     S = S + weights_(i) * z_diff * z_diff.transpose();
   }
 
-  //add measurement noise covariance matrix
+  // Add measurement noise covariance matrix
   // TODO: move to init
   MatrixXd R = MatrixXd(n_z,n_z);
   R << std_radr_*std_radr_, 0,                       0,
@@ -397,16 +378,16 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   Tc.fill(0.0);
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
 
-    //residual
+    // Residual
     VectorXd z_diff = Zsig.col(i) - z_pred;
-    //angle normalization
+    // Angle normalization
     z_diff(1) = tools_.NormalizeAngle(z_diff(1));
 
-    // state difference
+    // State difference
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
-    //angle normalization
+    // Angle normalization
     x_diff(3) = tools_.NormalizeAngle(x_diff(3));
-    // limit angle acceleration
+    // Limit angle acceleration
     if (x_diff(4)> 0) x_diff(4) = min(x_diff(4), YAW_ACCEL_MAX_);
     if (x_diff(4)< 0) x_diff(4) = max(x_diff(4), -YAW_ACCEL_MAX_);
 
