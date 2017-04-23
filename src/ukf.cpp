@@ -33,17 +33,17 @@ UKF::UKF() {
   P_ <<
     1, 0, 0, 0, 0,
     0, 1, 0, 0, 0,
-    0, 0, 1000, 0, 0,
-    0, 0, 0, 1000, 0,
-    0, 0, 0, 0, 1000;
+    0, 0, 0.2, 0, 0,
+    0, 0, 0, 1, 0,
+    0, 0, 0, 0, 1;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 1.6;
+  std_a_ = 3;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 0.23;
+  std_yawdd_ = 0.5;
 
-  YAW_ACCEL_MAX_ = 0.8;
+  YAW_ACCEL_MAX_ = 0.6;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -177,9 +177,11 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 void UKF::Prediction(double delta_t) {
   //create augmented mean vector
   VectorXd x_aug = VectorXd(n_aug_);
+  x_aug.fill(0.0);
 
   //create augmented state covariance
   MatrixXd P_aug = MatrixXd(n_aug_, n_aug_);
+  P_aug.fill(0.0);
 
   //create sigma point matrix
   MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
@@ -276,8 +278,8 @@ void UKF::Prediction(double delta_t) {
     // gets very large and the process eventually stops.
     // I assume setting the limits below could be hiding a
     // coding mistake elsewhere
-    if (x_diff(4) > 0) x_diff(4) = min(x_diff(4), YAW_ACCEL_MAX_);
-    if (x_diff(4) < 0) x_diff(4) = max(x_diff(4), -YAW_ACCEL_MAX_);
+    if (x_diff(4) > YAW_ACCEL_MAX_) x_diff(4) = YAW_ACCEL_MAX_/2.8;
+    if (x_diff(4) < -YAW_ACCEL_MAX_) x_diff(4) = -YAW_ACCEL_MAX_/2.8;
 
     P = P + weights_(i) * x_diff * x_diff.transpose() ;
   }
