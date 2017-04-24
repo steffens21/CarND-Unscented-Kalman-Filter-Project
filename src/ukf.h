@@ -47,7 +47,11 @@ public:
   ///* Laser measurement noise standard deviation position2 in m
   double std_laspy_;
 
+  ///* Measurement noise covariance matrices
+
   MatrixXd R_laser_;
+
+  MatrixXd R_radar_;
 
   ///* Radar measurement noise standard deviation radius in m
   double std_radr_;
@@ -75,8 +79,6 @@ public:
 
   ///* the current NIS for laser
   double NIS_laser_;
-
-  double YAW_ACCEL_MAX_;
 
   /**
    * Constructor
